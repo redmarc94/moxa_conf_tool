@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Net;
 using System.Net.NetworkInformation;
 using System.Threading;
 using System.Windows;
@@ -9,12 +12,20 @@ namespace MoxaConfigApp;
 
 public partial class MainWindow : Window
 {
+    private const string DefaultSwitchIp = "192.168.127.254";
+    private const string DefaultLocalManagementIp = "192.168.127.253";
+    private static readonly IPAddress ManagementNetwork = IPAddress.Parse("192.168.127.0");
+    private static readonly IPAddress ManagementMask = IPAddress.Parse("255.255.255.0");
+
     private readonly Logging logger;
 
     public MainWindow()
     {
         InitializeComponent();
         logger = new Logging("MoxaConfigApp");
+
+        txtSSHHost.Text = DefaultSwitchIp;
+        txtIPAddress.Text = DefaultSwitchIp;
     }
 
     private void btnConfigure_Click(object sender, RoutedEventArgs e)
@@ -34,7 +45,7 @@ public partial class MainWindow : Window
 
         string newHost = ipAddress;
 
-        var firstPhaseCommands = new List<string>
+        var baseCommands = new List<string>
         {
             "conf t",
             $"hostname {montante}",
@@ -70,19 +81,24 @@ public partial class MainWindow : Window
             "ptp profile c37.238",
             "exit",
             "exit",
-            "copy running startup",
-            "conf t",
-            $"ip management address {ipAddress} 255.255.240.0",
-            "exit"
-        };
-
-        var secondPhaseCommands = new List<string>
-        {
             "copy running startup"
         };
 
+        var secondPhaseCommands = new List<string> { "copy running startup" };
+
         try
         {
+            if (!EnsureLocalManagementIp())
+            {
+                return;
+            }
+
+            if (!CheckInitialReachability(oldHost))
+            {
+                MessageBox.Show($"Nessuna risposta da {oldHost}. Controllare collegamento e riprovare.");
+                return;
+            }
+
             const int maxFirstPhaseAttempts = 5;
             bool firstPhaseCompleted = false;
 
@@ -97,24 +113,49 @@ public partial class MainWindow : Window
                     bool connected = WaitForSshConnection(agentOld, 30);
                     if (!connected)
                     {
-                        Log("Impossibile stabilire la connessione SSH al vecchio IP entro il tempo previsto. Ritento...");
+                        Log("Impossibile stabilire la connessione SSH al vecchio IP entro il tempo previsto. Ritento procedura completa...");
                         Thread.Sleep(5000);
                         continue;
                     }
 
                     Log("Connessione stabilita con il vecchio IP, invio comandi prima fase...");
-                    bool phaseSuccess = agentOld.ProgramMoxa(firstPhaseCommands);
+                    bool baseCommandsOk = agentOld.ProgramMoxa(baseCommands);
 
-                    if (phaseSuccess)
+                    if (!baseCommandsOk || !agentOld.isconnected)
                     {
-                        Log("Prima fase completata correttamente sul vecchio IP.");
-                        firstPhaseCompleted = true;
-                    }
-                    else
-                    {
-                        Log("La prima fase non è andata a buon fine (possibile disconnessione). Ritento l'intera sequenza...");
+                        Log("Disconnessione o errore durante i comandi iniziali. Riavvio la sequenza dall'inizio...");
                         Thread.Sleep(5000);
+                        continue;
                     }
+
+                    Log("Controllo sessione SSH prima del cambio IP...");
+                    if (!agentOld.isconnected)
+                    {
+                        Log("Sessione SSH non più attiva prima del cambio IP. Riavvio procedura...");
+                        Thread.Sleep(5000);
+                        continue;
+                    }
+
+                    bool enteredConf = agentOld.ProgramMoxa(new List<string> { "conf t" });
+                    if (!enteredConf || !agentOld.isconnected)
+                    {
+                        Log("Impossibile rientrare in configurazione prima del cambio IP. Riavvio procedura...");
+                        Thread.Sleep(5000);
+                        continue;
+                    }
+
+                    Log($"Invio comando di cambio IP ({ipAddress}) e attendo disconnessione...");
+                    bool ipChangeSent = agentOld.SendCommandExpectDisconnect($"ip management address {ipAddress} 255.255.240.0", 20);
+
+                    if (!ipChangeSent)
+                    {
+                        Log("Il comando di cambio IP non è stato confermato. Riavvio procedura...");
+                        Thread.Sleep(5000);
+                        continue;
+                    }
+
+                    Log("Prima fase completata correttamente sul vecchio IP. Attesa per riavvio...");
+                    firstPhaseCompleted = true;
                 }
                 finally
                 {
@@ -205,6 +246,117 @@ public partial class MainWindow : Window
         }
 
         return false;
+    }
+
+    private bool CheckInitialReachability(string host)
+    {
+        Log($"Verifico raggiungibilità iniziale di {host}...");
+        bool reachable = WaitForPing(host, 20);
+        if (!reachable)
+        {
+            Log($"Nessuna risposta da {host}. Assicurarsi di essere collegati alla rete 192.168.127.0/24.");
+        }
+        else
+        {
+            Log($"Ping a {host} riuscito. Procedo con la connessione SSH.");
+        }
+
+        return reachable;
+    }
+
+    private bool EnsureLocalManagementIp()
+    {
+        try
+        {
+            Log("Verifica presenza IP locale nel range 192.168.127.0/24...");
+
+            IEnumerable<(NetworkInterface Interface, IPAddress Address)> addresses = NetworkInterface
+                .GetAllNetworkInterfaces()
+                .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Loopback && ni.OperationalStatus == OperationalStatus.Up)
+                .SelectMany(ni => ni.GetIPProperties().UnicastAddresses
+                    .Where(ip => ip.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    .Select(ip => (Interface: ni, Address: ip.Address)));
+
+            foreach ((NetworkInterface Interface, IPAddress Address) info in addresses)
+            {
+                if (IsInSameSubnet(info.Address, ManagementNetwork, ManagementMask))
+                {
+                    Log($"IP {info.Address} già configurato sull'interfaccia '{info.Interface.Name}'.");
+                    return true;
+                }
+            }
+
+            NetworkInterface? targetInterface = NetworkInterface
+                .GetAllNetworkInterfaces()
+                .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .OrderByDescending(ni => ni.OperationalStatus == OperationalStatus.Up)
+                .ThenByDescending(ni => ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+                .FirstOrDefault();
+
+            if (targetInterface == null)
+            {
+                Log("Nessuna interfaccia valida trovata per aggiungere l'indirizzo di management.");
+                MessageBox.Show("Impossibile trovare un'interfaccia di rete per aggiungere l'IP 192.168.127.x");
+                return false;
+            }
+
+            return AddLocalManagementIp(targetInterface);
+        }
+        catch (Exception ex)
+        {
+            Log($"Errore durante la verifica o aggiunta dell'IP locale: {ex.Message}");
+            MessageBox.Show("Errore durante la configurazione dell'IP locale. Controllare i log.");
+            return false;
+        }
+    }
+
+    private bool AddLocalManagementIp(NetworkInterface targetInterface)
+    {
+        string interfaceName = targetInterface.Name;
+        Log($"Aggiungo IP {DefaultLocalManagementIp} su '{interfaceName}'...");
+
+        ProcessStartInfo psi = new()
+        {
+            FileName = "netsh",
+            Arguments = $"interface ipv4 add address \"{interfaceName}\" {DefaultLocalManagementIp} 255.255.255.0 store=active",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+
+        using Process proc = new() { StartInfo = psi };
+        proc.Start();
+        string output = proc.StandardOutput.ReadToEnd();
+        string error = proc.StandardError.ReadToEnd();
+        proc.WaitForExit();
+
+        if (proc.ExitCode == 0)
+        {
+            Log($"IP aggiunto correttamente. Output: {output.Trim()}");
+            return true;
+        }
+
+        Log($"Impossibile aggiungere IP su '{interfaceName}'. Errore: {error.Trim()} {output.Trim()}");
+        MessageBox.Show("Non è stato possibile aggiungere l'IP locale. Avviare l'applicazione come amministratore.");
+        return false;
+    }
+
+    private static bool IsInSameSubnet(IPAddress address, IPAddress network, IPAddress mask)
+    {
+        byte[] ipBytes = address.GetAddressBytes();
+        byte[] networkBytes = network.GetAddressBytes();
+        byte[] maskBytes = mask.GetAddressBytes();
+
+        for (int i = 0; i < ipBytes.Length; i++)
+        {
+            if ((ipBytes[i] & maskBytes[i]) != (networkBytes[i] & maskBytes[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool WaitForSshConnection(AgentSSH agent, int timeoutSeconds)
