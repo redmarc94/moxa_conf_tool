@@ -384,7 +384,81 @@ public partial class MainWindow : Window
             txtLog.ScrollToEnd();
         });
 
-        logger.Write(message);
+            logger.Write(message);
+        }
+    }
+
+    private void LoadNetworkInterfaces()
+    {
+        IEnumerable<NetworkInterfaceItem> interfaces = NetworkInterface
+            .GetAllNetworkInterfaces()
+            .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Loopback && ni.Supports(NetworkInterfaceComponent.IPv4))
+            .OrderByDescending(ni => ni.OperationalStatus == OperationalStatus.Up)
+            .ThenByDescending(ni => ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+            .ThenBy(ni => ni.Name)
+            .Select(ni => new NetworkInterfaceItem(ni));
+
+        cmbInterfaces.ItemsSource = interfaces.ToList();
+
+        if (cmbInterfaces.Items.Count > 0)
+        {
+            cmbInterfaces.SelectedIndex = 0;
+            Log($"Interfaccia predefinita selezionata: {(cmbInterfaces.SelectedItem as NetworkInterfaceItem)?.Display}");
+        }
+        else
+        {
+            MessageBox.Show("Nessuna interfaccia di rete disponibile per configurare l'IP locale.");
+            Log("Nessuna interfaccia di rete trovata.");
+        }
+    }
+
+    private NetworkInterface? GetSelectedInterface()
+    {
+        if (cmbInterfaces.SelectedItem is NetworkInterfaceItem item)
+        {
+            return item.Interface;
+        }
+
+        if (cmbInterfaces.Items.Count > 0)
+        {
+            cmbInterfaces.SelectedIndex = 0;
+            return (cmbInterfaces.SelectedItem as NetworkInterfaceItem)?.Interface;
+        }
+
+        return null;
+    }
+
+    private void EnsureAdminPrivileges()
+    {
+        WindowsIdentity? identity = WindowsIdentity.GetCurrent();
+        WindowsPrincipal principal = new(identity);
+
+        if (principal.IsInRole(WindowsBuiltInRole.Administrator))
+        {
+            return;
+        }
+
+        try
+        {
+            string? exePath = Process.GetCurrentProcess().MainModule?.FileName;
+            exePath ??= Assembly.GetEntryAssembly()?.Location ?? Assembly.GetExecutingAssembly().Location;
+
+            ProcessStartInfo psi = new()
+            {
+                FileName = exePath,
+                UseShellExecute = true,
+                Verb = "runas",
+                Arguments = string.Join(" ", Environment.GetCommandLineArgs().Skip(1).Select(arg => $"\"{arg}\""))
+            };
+
+            Process.Start(psi);
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Per configurare l'IP locale servono i diritti di amministratore. Chiudere e riavviare come amministratore. Dettagli: {ex.Message}");
+            Application.Current.Shutdown();
+        }
     }
 
     private IEnumerable<NetworkInterfaceItem> GetAvailableInterfaces()
