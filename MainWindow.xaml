@@ -29,6 +29,13 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
@@ -83,6 +90,19 @@
 
                 <Button x:Name="btnConfigure"
                         Grid.Row="5"
+
+                <Label Grid.Row="3" Grid.Column="0" Margin="0,0,12,10" VerticalAlignment="Center">SSH Host (IP attuale):</Label>
+                <TextBox x:Name="txtSSHHost"
+                         Grid.Row="3"
+                         Grid.Column="1"
+                         Margin="0,0,0,10"
+                         Height="28"
+                         Width="320"
+                         VerticalContentAlignment="Center"
+                         ToolTip="IP attuale per la connessione SSH" />
+
+                <Button x:Name="btnConfigure"
+                        Grid.Row="4"
                         Grid.Column="1"
                         Width="220"
                         Height="34"

@@ -155,6 +155,22 @@ public partial class MainWindow : Window
                     if (!agentOld.isconnected)
                     {
                         Log("Sessione SSH non più attiva prima del cambio IP. Riavvio procedura...");
+
+                    if (!baseCommandsOk || !agentOld.isconnected)
+                    {
+                        Log("Disconnessione o errore durante i comandi iniziali. Riavvio la sequenza dall'inizio...");
+                        Thread.Sleep(5000);
+                        continue;
+                    }
+
+                    bool enteredConf = agentOld.ProgramMoxa(new List<string> { "conf t" });
+                    if (!enteredConf || !agentOld.isconnected)
+                    {
+                        Log("Impossibile rientrare in configurazione prima del cambio IP. Riavvio procedura...");
+                    Log("Controllo sessione SSH prima del cambio IP...");
+                    if (!agentOld.isconnected)
+                    {
+                        Log("Sessione SSH non più attiva prima del cambio IP. Riavvio procedura...");
                         Thread.Sleep(5000);
                         continue;
                     }
@@ -319,6 +335,20 @@ public partial class MainWindow : Window
             }
 
             Log($"Interfaccia scelta per aggiungere l'IP locale: {targetInterface.Name} - {targetInterface.Description}");
+
+            NetworkInterface? targetInterface = NetworkInterface
+                .GetAllNetworkInterfaces()
+                .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .OrderByDescending(ni => ni.OperationalStatus == OperationalStatus.Up)
+                .ThenByDescending(ni => ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+                .FirstOrDefault();
+
+            if (targetInterface == null)
+            {
+                Log("Nessuna interfaccia valida trovata per aggiungere l'indirizzo di management.");
+                MessageBox.Show("Impossibile trovare un'interfaccia di rete per aggiungere l'IP 192.168.127.x");
+                return false;
+            }
 
             return AddLocalManagementIp(targetInterface);
         }
