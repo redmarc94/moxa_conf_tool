@@ -21,14 +21,6 @@
                 BorderBrush="#dcdcdc"
                 BorderThickness="1">
             <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
@@ -66,30 +58,6 @@
                          Width="320"
                          VerticalContentAlignment="Center"
                          ToolTip="Nuovo IP da assegnare allo switch" />
-
-                <Label Grid.Row="3" Grid.Column="0" Margin="0,0,12,10" VerticalAlignment="Center">SSH Host (IP attuale):</Label>
-                <TextBox x:Name="txtSSHHost"
-                         Grid.Row="3"
-                         Grid.Column="1"
-                         Margin="0,0,0,10"
-                         Height="28"
-                         Width="320"
-                         VerticalContentAlignment="Center"
-                         ToolTip="IP attuale per la connessione SSH" />
-
-                <Label Grid.Row="4" Grid.Column="0" Margin="0,0,12,10" VerticalAlignment="Center">Interfaccia rete:</Label>
-                <ComboBox x:Name="cmbInterfaces"
-                          Grid.Row="4"
-                          Grid.Column="1"
-                          Margin="0,0,0,10"
-                          Height="28"
-                          Width="320"
-                          VerticalContentAlignment="Center"
-                          DisplayMemberPath="Display"
-                          ToolTip="Seleziona la scheda su cui aggiungere l'IP locale" />
-
-                <Button x:Name="btnConfigure"
-                        Grid.Row="5"
 
                 <Label Grid.Row="3" Grid.Column="0" Margin="0,0,12,10" VerticalAlignment="Center">SSH Host (IP attuale):</Label>
                 <TextBox x:Name="txtSSHHost"
