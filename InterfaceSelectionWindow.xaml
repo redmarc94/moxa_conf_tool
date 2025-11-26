@@ -1,0 +1,58 @@
+<Window x:Class="MoxaConfigApp.InterfaceSelectionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Seleziona scheda di rete"
+        Height="420"
+        Width="620"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#f7f8fb">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+            <TextBlock Text="Scegli la scheda di rete su cui aggiungere l'indirizzo 192.168.127.253"
+                       FontSize="16"
+                       FontWeight="SemiBold"
+                       Foreground="#2b3a67"
+                       TextWrapping="Wrap" />
+            <TextBlock Text="Sono mostrate solo le interfacce IPv4 non di loopback."
+                       Margin="0,6,0,0"
+                       Foreground="#4c5d7a" />
+        </StackPanel>
+
+        <ListView x:Name="lstInterfaces"
+                  Grid.Row="1"
+                  BorderBrush="#dcdcdc"
+                  BorderThickness="1"
+                  SelectionMode="Single"
+                  MouseDoubleClick="lstInterfaces_MouseDoubleClick">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Nome" DisplayMemberBinding="{Binding Name}" Width="180" />
+                    <GridViewColumn Header="Descrizione" DisplayMemberBinding="{Binding Description}" Width="260" />
+                    <GridViewColumn Header="Stato" DisplayMemberBinding="{Binding Status}" Width="120" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Annulla"
+                    Width="100"
+                    Height="30"
+                    Margin="0,0,10,0"
+                    Click="Cancel_Click" />
+            <Button Content="Seleziona"
+                    Width="120"
+                    Height="30"
+                    Background="#2b5bea"
+                    Foreground="White"
+                    BorderBrush="#2b5bea"
+                    Click="Confirm_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
