@@ -14,6 +14,23 @@ namespace MoxaConfigApp;
 
 public partial class MainWindow : Window
 {
+    private sealed class NetworkInterfaceItem
+    {
+        public NetworkInterfaceItem(NetworkInterface networkInterface)
+        {
+            Interface = networkInterface;
+            Name = networkInterface.Name;
+            Description = networkInterface.Description;
+            Status = networkInterface.OperationalStatus;
+        }
+
+        public string Name { get; }
+        public string Description { get; }
+        public OperationalStatus Status { get; }
+        public NetworkInterface Interface { get; }
+        public string Display => $"{Name} ({Description}) - {Status}";
+    }
+
     private const string DefaultSwitchIp = "192.168.127.254";
     private const string DefaultLocalManagementIp = "192.168.127.253";
     private static readonly IPAddress ManagementNetwork = IPAddress.Parse("192.168.127.0");
@@ -30,6 +47,8 @@ public partial class MainWindow : Window
 
         txtSSHHost.Text = DefaultSwitchIp;
         txtIPAddress.Text = DefaultSwitchIp;
+
+        LoadNetworkInterfaces();
     }
 
     private void btnConfigure_Click(object sender, RoutedEventArgs e)
@@ -132,6 +151,22 @@ public partial class MainWindow : Window
                         continue;
                     }
 
+                    Log("Controllo sessione SSH prima del cambio IP...");
+                    if (!agentOld.isconnected)
+                    {
+                        Log("Sessione SSH non più attiva prima del cambio IP. Riavvio procedura...");
+
+                    if (!baseCommandsOk || !agentOld.isconnected)
+                    {
+                        Log("Disconnessione o errore durante i comandi iniziali. Riavvio la sequenza dall'inizio...");
+                        Thread.Sleep(5000);
+                        continue;
+                    }
+
+                    bool enteredConf = agentOld.ProgramMoxa(new List<string> { "conf t" });
+                    if (!enteredConf || !agentOld.isconnected)
+                    {
+                        Log("Impossibile rientrare in configurazione prima del cambio IP. Riavvio procedura...");
                     Log("Controllo sessione SSH prima del cambio IP...");
                     if (!agentOld.isconnected)
                     {
@@ -290,16 +325,30 @@ public partial class MainWindow : Window
                 }
             }
 
-            NetworkInterface? targetInterface = PromptInterfaceSelection();
+            NetworkInterface? targetInterface = GetSelectedInterface();
 
             if (targetInterface == null)
             {
-                Log("Selezione interfaccia annullata o nessuna interfaccia disponibile.");
+                Log("Nessuna interfaccia valida selezionata per aggiungere l'indirizzo di management.");
                 MessageBox.Show("Seleziona una scheda di rete per aggiungere l'IP 192.168.127.x");
                 return false;
             }
 
             Log($"Interfaccia scelta per aggiungere l'IP locale: {targetInterface.Name} - {targetInterface.Description}");
+
+            NetworkInterface? targetInterface = NetworkInterface
+                .GetAllNetworkInterfaces()
+                .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .OrderByDescending(ni => ni.OperationalStatus == OperationalStatus.Up)
+                .ThenByDescending(ni => ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
+                .FirstOrDefault();
+
+            if (targetInterface == null)
+            {
+                Log("Nessuna interfaccia valida trovata per aggiungere l'indirizzo di management.");
+                MessageBox.Show("Impossibile trovare un'interfaccia di rete per aggiungere l'IP 192.168.127.x");
+                return false;
+            }
 
             return AddLocalManagementIp(targetInterface);
         }
@@ -384,37 +433,48 @@ public partial class MainWindow : Window
             txtLog.ScrollToEnd();
         });
 
-        logger.Write(message);
+            logger.Write(message);
+        }
     }
 
-    private IEnumerable<NetworkInterfaceItem> GetAvailableInterfaces()
+    private void LoadNetworkInterfaces()
     {
-        return NetworkInterface
+        IEnumerable<NetworkInterfaceItem> interfaces = NetworkInterface
             .GetAllNetworkInterfaces()
             .Where(ni => ni.NetworkInterfaceType != NetworkInterfaceType.Loopback && ni.Supports(NetworkInterfaceComponent.IPv4))
             .OrderByDescending(ni => ni.OperationalStatus == OperationalStatus.Up)
             .ThenByDescending(ni => ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet)
             .ThenBy(ni => ni.Name)
             .Select(ni => new NetworkInterfaceItem(ni));
+
+        cmbInterfaces.ItemsSource = interfaces.ToList();
+
+        if (cmbInterfaces.Items.Count > 0)
+        {
+            cmbInterfaces.SelectedIndex = 0;
+            Log($"Interfaccia predefinita selezionata: {(cmbInterfaces.SelectedItem as NetworkInterfaceItem)?.Display}");
+        }
+        else
+        {
+            MessageBox.Show("Nessuna interfaccia di rete disponibile per configurare l'IP locale.");
+            Log("Nessuna interfaccia di rete trovata.");
+        }
     }
 
-    private NetworkInterface? PromptInterfaceSelection()
+    private NetworkInterface? GetSelectedInterface()
     {
-        List<NetworkInterfaceItem> interfaces = GetAvailableInterfaces().ToList();
-
-        if (interfaces.Count == 0)
+        if (cmbInterfaces.SelectedItem is NetworkInterfaceItem item)
         {
-            Log("Nessuna interfaccia di rete disponibile per configurare l'IP locale.");
-            return null;
+            return item.Interface;
         }
 
-        InterfaceSelectionWindow selector = new(interfaces)
+        if (cmbInterfaces.Items.Count > 0)
         {
-            Owner = this
-        };
+            cmbInterfaces.SelectedIndex = 0;
+            return (cmbInterfaces.SelectedItem as NetworkInterfaceItem)?.Interface;
+        }
 
-        bool? result = selector.ShowDialog();
-        return result == true ? selector.SelectedInterface : null;
+        return null;
     }
 
     private void EnsureAdminPrivileges()
