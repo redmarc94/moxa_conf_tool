@@ -18,8 +18,8 @@ Applicazione WPF per configurare automaticamente switch Moxa tramite sessioni SS
 - `MoxaConfigApp.csproj`: progetto .NET 6 con WPF e dipendenza Renci.SshNet.
 
 ## Dipendenze
-- [.NET 6 SDK](https://dotnet.microsoft.com/download/dotnet/6.0) o superiore con supporto WPF (solo Windows).
-- [Renci.SshNet](https://www.nuget.org/packages/Renci.SshNet/).
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) o superiore con supporto WPF (solo Windows).
+- [Renci.SshNet](https://www.nuget.org/packages/Renci.SshNet/) (ultima versione disponibile).
 
 ## Esecuzione
 1. Ripristinare i pacchetti NuGet: `dotnet restore`.
@@ -27,3 +27,6 @@ Applicazione WPF per configurare automaticamente switch Moxa tramite sessioni SS
 3. Avviare: `dotnet run`.
 
 > **Nota:** L'applicazione è progettata per essere eseguita su Windows per il supporto WPF.
+
+## Branch
+- `github-branch`: ramo dedicato richiesto per l'integrazione su GitHub mantenendo i file di soluzione Visual Studio.
