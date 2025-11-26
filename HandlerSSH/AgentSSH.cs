@@ -204,6 +204,55 @@ public class AgentSSH
         return false;
     }
 
+    public bool SendCommandExpectDisconnect(string command, int timeoutSec)
+    {
+        int startIndex;
+        lock (feedback)
+        {
+            startIndex = feedback.Count;
+        }
+
+        if (!SendCommand(command))
+        {
+            return false;
+        }
+
+        DateTime start = DateTime.Now;
+        while ((DateTime.Now - start).TotalSeconds < timeoutSec)
+        {
+            Thread.Sleep(500);
+
+            if (!client.IsConnected)
+            {
+                loger.Write($"Connessione chiusa (attesa) dopo il comando '{command}'");
+                return true;
+            }
+
+            lock (feedback)
+            {
+                for (int i = startIndex; i < feedback.Count; i++)
+                {
+                    string line = feedback[i];
+                    if (line.EndsWith("#", StringComparison.Ordinal))
+                    {
+                        return true;
+                    }
+
+                    if (line.Contains("% Invalid input", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("Error", StringComparison.OrdinalIgnoreCase) ||
+                        line.Contains("not valid", StringComparison.OrdinalIgnoreCase))
+                    {
+                        loger.Write($"Errore durante l'esecuzione di '{command}': {line}");
+                        return false;
+                    }
+                }
+            }
+        }
+
+        loger.Write($"Timeout in attesa di disconnessione o prompt dopo '{command}'");
+        return false;
+    }
+
     public bool ProgramMoxa(List<string> commands)
     {
         Thread.Sleep(2000);
